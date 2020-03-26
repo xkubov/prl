@@ -17,10 +17,10 @@ void parseInput()
 	int invar= 0;
 	std::fstream input(INPUT_FILE, std::ios::in);
 
-	int number; bool first = true;
-	while (input >> number) {
-		std::cout << (first ? "" : " ") << invar; first = false;
-		MPI_Send(&number, 1, MPI_INT, invar, TAG, MPI_COMM_WORLD);
+	bool first = true;
+	for (int number = input.get(); input.good(); number = input.get()) {
+		std::cout << (first ? "" : " ") << number; first = false;
+		MPI_Send(&number, 1, MPI_INT, invar++, TAG, MPI_COMM_WORLD);
 	}
 
 	std::cout << std::endl;
