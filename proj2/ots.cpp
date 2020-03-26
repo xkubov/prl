@@ -59,9 +59,9 @@ int main(int argc, char *argv[])
 	// All processors including the one that sends values.
 	MPI_Recv(&val, 1, MPI_INT, 0, TAG, MPI_COMM_WORLD, &stat);
 
-	int oddN = 2*(nproc/2)-1;
-	int evenN = 2*((nproc-1)/2);
-	int N = (nproc+1)/2; // round up
+	int oddN = (nproc/2)*2-1;
+	int evenN = ((nproc-1)/2)*2;
+	int N = nproc/2;
 
 	for (int k = 0; k < N; k++) {
 		if ((pid%2 == 0) && (pid < oddN)) { // Only evens -> except last one if odd N
