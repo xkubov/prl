@@ -5,6 +5,8 @@
  * @copyright This file is distributed under GPLv3 license.
  */
 
+#include <sys/time.h>
+
 #include <mpi.h>
 #include <iostream>
 #include <fstream>
@@ -63,6 +65,9 @@ int main(int argc, char *argv[])
 	int evenN = ((nproc-1)/2)*2;
 	int N = nproc/2;
 
+	struct timeval t1, t2;
+
+	gettimeofday(&t1, 0);
 	for (int k = 0; k < N; k++) {
 		if ((pid%2 == 0) && (pid < oddN)) { // Only evens -> except last one if odd N
 			// Send message to neighbor.
@@ -100,11 +105,15 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	gettimeofday(&t2, 0);
 
 	MPI_Send(&val, 1, MPI_INT, 0, TAG,  MPI_COMM_WORLD);
 
-	if(pid == 0)
+	if(pid == 0) {
 		printSorted(nproc);
+		double t = (1000000.0 * (t2.tv_sec - t1.tv_sec) + t2.tv_usec - t1.tv_usec);
+		std::cerr << t << std::endl;
+	}
 
 	MPI_Finalize(); 
 	return 0;
