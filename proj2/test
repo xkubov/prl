@@ -15,7 +15,7 @@ function printHelp()
 	echo "Usage: $0 <N>"
 	echo ""
 	echo "where:"
-	echo "  N - total random numbers to be generated."
+	echo "  N - total random numbers to be generated (must be greater > 0)."
 }
 
 function checkArgs()
@@ -23,12 +23,16 @@ function checkArgs()
 	allargs="'$@'"
 	[ "$allargs" == "''" ] && echo "error: expected argument" && printHelp && exit 1
 	[ "'$1'" != "$allargs" ] && echo "error: expected just one argument" && printHelp && exit 1
+	only_nums="$(echo "$1" | grep '^[0-9][0-9]*$')"
+	[ -z "$only_nums" ] && echo "error: invalid N: " $1 && printHelp && exit 1
 }
 
 function main()
 {
 	checkArgs $@
 	count=$1
+
+	[ $count -eq 0 ] && return
 
 	# create test file
 	dd if=/dev/random bs=1 count=$count of=$GEN_FILE &>/dev/null
