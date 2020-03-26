@@ -15,7 +15,7 @@
 void parseInput()
 {
 	int invar= 0;
-	std::fstream input(INPUT_FILE, std::ios::in);
+	std::fstream input(INPUT_FILE, std::ios::in | std::ios::binary);
 
 	bool first = true;
 	for (int number = input.get(); input.good(); number = input.get()) {
