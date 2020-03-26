@@ -1,22 +1,47 @@
 #!/bin/bash
 
-#pocet cisel bud zadam nebo 10 :)
-if [ $# -lt 1 ];then 
-    numbers=10;
-else
-    numbers=$1;
-fi;
+# compilation/run settings
+SRC=ots.cpp
+OUT=ots
+CC=mpic++
+RUNNER=mpirun
+FLAGS="--prefix /usr/local/share/OpenMPI"
 
-#preklad cpp zdrojaku
-mpic++ --prefix /usr/local/share/OpenMPI -o oets odd-even.cpp
+# testing settings
+GEN_FILE=numbers
 
+function printHelp()
+{
+	echo "Usage: $0 <N>"
+	echo ""
+	echo "where:"
+	echo "  N - total random numbers to be generated."
+}
 
-#vyrobeni souboru s random cisly
-dd if=/dev/random bs=1 count=$numbers of=numbers
+function checkArgs()
+{
+	allargs="'$@'"
+	[ -z "$allargs" ] && echo "error: expected argument" && printHelp && exit 1
+	[ "'$1'" != "$allargs" ] && echo "error: expected just one argument" && printHelp && exit 1
+}
 
-#spusteni
-mpirun --prefix /usr/local/share/OpenMPI -np $numbers oets
+function main()
+{
+	checkArgs $@
+	count=$1
 
-#uklid
-rm -f oets numbers
+	# create test file
+	dd if=/dev/random bs=1 count=$count of=$GEN_FILE &>/dev/null
 
+	# compilation
+	$CC $SRC $FLAGS -o $OUT
+
+	# run
+	$RUNNER $FLAGS -np $count $OUT
+
+	# clean
+	rm -f $OUT $GEN_FILE
+}
+
+main $@
+exit 0
