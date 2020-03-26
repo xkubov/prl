@@ -1,11 +1,15 @@
 #!/bin/bash
 
-i=7
-while [ $((i++)) -lt 30 ]; do
+i=0
+while [ $((i++)) -lt 20 ]; do
     mkdir -p $i
 
     j=0
-    while [ $((j++)) -lt 15 ]; do
+    while [ $((j++)) -lt 32 ]; do
+        printf "\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r"
+        printf "                                "
+        printf "\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r"
+        printf "($i/20) $j/32"
         ./test $i > /dev/null 2> $i/$j.time
     done
 done
