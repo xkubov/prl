@@ -21,7 +21,7 @@ function printHelp()
 function checkArgs()
 {
 	allargs="'$@'"
-	[ -z "$allargs" ] && echo "error: expected argument" && printHelp && exit 1
+	[ "$allargs" == "''" ] && echo "error: expected argument" && printHelp && exit 1
 	[ "'$1'" != "$allargs" ] && echo "error: expected just one argument" && printHelp && exit 1
 }
 
