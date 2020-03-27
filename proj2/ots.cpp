@@ -13,6 +13,7 @@
 
 #define TAG 0
 #define INPUT_FILE "numbers"
+#define LOG_TIME false
 
 void parseInput()
 {
@@ -111,8 +112,10 @@ int main(int argc, char *argv[])
 
 	if(pid == 0) {
 		printSorted(nproc);
-		double t = (1000000.0 * (t2.tv_sec - t1.tv_sec) + t2.tv_usec - t1.tv_usec);
-		std::cerr << t << std::endl;
+		if (LOG_TIME) {
+			double t = (1000000.0 * (t2.tv_sec - t1.tv_sec) + t2.tv_usec - t1.tv_usec);
+			std::cerr << t << std::endl;
+		}
 	}
 
 	MPI_Finalize(); 
