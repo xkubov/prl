@@ -35,7 +35,7 @@ function main()
 	[ $count -eq 0 ] && return
 
 	# create test file
-	dd if=/dev/random bs=1 count=$count of=$GEN_FILE &>/dev/null
+	#dd if=/dev/random bs=1 count=$count of=$GEN_FILE &>/dev/null
 
 	# compilation
 	$CC $SRC $FLAGS -o $OUT

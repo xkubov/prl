@@ -7,6 +7,9 @@
 
 #include <sys/time.h>
 
+#include <cstdlib>
+#include <ctime>
+
 #include <mpi.h>
 #include <iostream>
 #include <fstream>
@@ -27,6 +30,19 @@ void parseInput()
 
 	std::cout << std::endl;
 	input.close();
+}
+
+void parseInput2(int nproc)
+{
+    srand(time(NULL));
+
+    bool first = true;
+    for (int i = 0; i < nproc; i++) {
+        int number = rand() % 255;
+        std::cout << (first ? "" : " ") << number; first = false;
+        MPI_Send(&number, 1, MPI_INT, i, TAG, MPI_COMM_WORLD);
+    }
+    std::cout << std::endl;
 }
 
 void printSorted(int nproc)
@@ -55,7 +71,7 @@ int main(int argc, char *argv[])
 	// Processor with ID 0 does parsing of input.
 	// -> sends values to all other processors.
 	if (pid == 0)
-		parseInput();
+		parseInput2(nproc);
 
 	// Receive value
 	// All processors including the one that sends values.
@@ -65,9 +81,9 @@ int main(int argc, char *argv[])
 	int evenN = ((nproc-1)/2)*2;
 	int N = nproc/2;
 
-	struct timeval t1, t2;
+	double t1, t2;
+        t1 = MPI_Wtime();
 
-	gettimeofday(&t1, 0);
 	for (int k = 0; k < N; k++) {
 		if ((pid%2 == 0) && (pid < oddN)) { // Only evens -> except last one if odd N
 			// Send message to neighbor.
@@ -105,13 +121,13 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	gettimeofday(&t2, 0);
+        t2 = MPI_Wtime();
 
 	MPI_Send(&val, 1, MPI_INT, 0, TAG,  MPI_COMM_WORLD);
 
 	if(pid == 0) {
 		printSorted(nproc);
-		double t = (1000000.0 * (t2.tv_sec - t1.tv_sec) + t2.tv_usec - t1.tv_usec);
+		double t = (t2 - t1)*1000000;
 		std::cerr << t << std::endl;
 	}
 

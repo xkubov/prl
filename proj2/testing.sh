@@ -1,7 +1,7 @@
 #!/bin/bash
 
 i=0
-while [ $((i++)) -lt 20 ]; do
+while [ $((i++)) -lt 25 ]; do
     mkdir -p $i
 
     j=0
