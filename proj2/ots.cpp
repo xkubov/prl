@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 
 	int oddN = (nproc/2)*2-1;
 	int evenN = ((nproc-1)/2)*2;
-	int N = nproc/2;
+	int N = (nproc+1)/2; // round up, based on the algorithm in slides
 
 	struct timeval t1, t2;
 
