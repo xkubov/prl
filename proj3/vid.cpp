@@ -57,25 +57,23 @@ void compueAngles(int pid, int nproc, MPI_Win &win, double* angles, int n)
 			if (j < n)
 				angles[j] = j == 0 ? 0 : std::atan((angles[j]-first)/j);
 	}
-
-//	MPI_Win_fence(0, win);
 }
 
 void maxscan(int pid, int nproc, MPI_Win &win, double *angles, int n)
 {
-	int gap, ngap = 2;
-	for (int step = 0; step < ceil(std::log2(n)-1); step++) {
-		gap = ngap; ngap <<= 1;
+	// gap -> each processor takes evey nth element of array.
+	// ngap -> gap in next level -> used to compute pid.
+	int gap = 1, ngap = 2;
+
+	for (int step = 0; step < ceil(std::log2(n)); step++) {
+		int pgap = gap; gap = ngap; ngap <<= 1;
 		int max = ceil(((double)n)/(nproc*gap));
 		for (int i = 0; i < max; i++) {
-			int idx = gap*pid + i*nproc*gap;
+			int idx = gap*pid + i*nproc*gap + gap-1;
 			if (idx < n) {
-				double sec = (idx+gap-1 < n) ? angles[idx+gap-1] : 0;
-
-				double max = std::max(angles[idx], sec);
-				int tgPid = ((idx+gap-1)/ngap)%nproc; // TODO: is modulo needed?
-
-				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx+gap-1, 1, MPI_DOUBLE, win);
+				double max = std::max(angles[idx], angles[idx-pgap]);
+				int tgPid = (idx/ngap)%nproc; // TODO: is modulo needed?
+				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, win);
 			}
 		}
 
@@ -119,9 +117,6 @@ int main(int argc, char** argv)
 		std::memcpy(angles, angs.data(), sizeof(double)*angsize);
 
 	compueAngles(pid, nproc, win, angles, angsize);
-	for (int i = 0; i < angsize; i++) {
-		std::cout << pid << ": " << angles[i] << std::endl;
-	}
 
 	maxscan(pid, nproc, win, angles, angsize);
 
