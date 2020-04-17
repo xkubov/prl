@@ -12,7 +12,7 @@ SRC=vid.cpp
 OUT=vid
 CC=mpic++
 RUNNER=mpirun
-FLAGS="--prefix /usr/local/share/OpenMPI"
+MPI=/usr/local/share/OpenMPI
 
 function usage()
 {
@@ -28,12 +28,15 @@ function exitWith()
 	exit 1
 }
 
-function parse_input()
+function check_input()
 {
 	test ! -z "$2" && exitWith "just one argument is expected"
 	test -z "$1" && exitWith "expected argument"
 	test -z "$(echo "$1" | sed -E 's/^([0-9]+,)*[0-9]+$//')" || exitWith "invalid format of input"
+}
 
+function parse_input()
+{
 	IFS=','
 	for i in $1; do
 		echo "$i"
@@ -42,15 +45,26 @@ function parse_input()
 
 function compute_cpus()
 {
-	echo 1
+	n=$1
+	python <<- END
+		from math import log
+
+		p = 2**int(log($n, 2))
+		while $n/p < log(p, 2):
+		    p = p >> 1
+
+		print(p)
+	END
 }
 
 function main()
 {
 	# compilation
-	"$CC" "$SRC" "$FLAGS" -o "$OUT" || exitWith "unable to compile file $SRC"
+	"$CC" "$SRC" --prefix "$MPI" -o "$OUT" || exitWith "unable to compile file $SRC"
 	count="$(compute_cpus "$(parse_input "$@" | wc -l)")"
-	parse_input "$@" | "$RUNNER" "$FLAGS" -np "$count" "$OUT"
+	check_input "$@"
+
+	parse_input "$@" | "$RUNNER" --prefix "$MPI" -np "$count" "$OUT"
 
 	# clean
 	rm -f $OUT
