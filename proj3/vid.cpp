@@ -14,6 +14,9 @@
 
 #define TAG 0
 
+#include <sys/time.h>
+#define LOG_TIME true
+
 struct MPIShared {
 	double *data;
 	double *original;
@@ -28,8 +31,8 @@ struct MPIProcInfo {
 
 long nextpow2(int num)
 {
-	long i = 1;
-	while (num >>= 1)
+	long i = 1; int j = num;
+	while (j >>= 1)
 		i <<= 1;
 
 	return i == num ? i : i << 1;
@@ -80,7 +83,7 @@ void computeAngles(MPIProcInfo &pi, MPIShared &angles)
 			MPI_Win_fence(0, angles.win);
 
 			if (j < angles.size) { // TODO: if power of 2 this can be deleted
-				angles.data[j] = j == 0 ? 0 : std::atan((angles.data[j]-first)/j);
+				angles.data[j] = j == 0 ? -std::numeric_limits<double>::infinity(): std::atan((angles.data[j]-first)/j);
 				MPI_Put(&angles.data[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, angles.win);
 			}
 		}
@@ -149,7 +152,7 @@ int main(int argc, char** argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &pi.nproc);
 	MPI_Comm_rank(MPI_COMM_WORLD, &pi.pid);
 
-	MPIShared angles;
+	MPIShared angles = {}; // set nullptr to pointers
 
 	std::vector<double> angs;
 	readInput(pi, angs);
@@ -175,21 +178,29 @@ int main(int argc, char** argv)
 	computeAngles(pi, angles);
 	std::memcpy(angs.data(), angles.data, sizeof(double)*angs.size());
 
+	struct timeval t1, t2;
+	gettimeofday(&t1, 0);
 	upsweep(pi, angles);
 	// clear
 	angles.data[angles.size-1] = -std::numeric_limits<double>::infinity();
 
 	downsweep(pi, angles);
+	gettimeofday(&t2, 0);
 
 	if (pi.pid == 0) {
 		std::cout << "_";
 		for (int i = 1; i < origsize; i++) {
-			if (angles.data[i] <= angs[i])
+			if (angles.data[i] < angs[i])
 				std::cout << ",v";
 			else
 				std::cout << ",u";
 		}
 		std::cout << std::endl;
+
+		if (LOG_TIME) {
+			double t = (1000000.0 * (t2.tv_sec - t1.tv_sec) + t2.tv_usec - t1.tv_usec);
+			std::cerr << t << std::endl;
+		}
 	}
 
 	MPI_Win_free(&angles.win);

@@ -49,8 +49,12 @@ function compute_cpus()
 	python <<- END
 		from math import log
 
-		p = 2**int(log($n, 2))
-		while $n/p < log(p, 2):
+		n = $n
+		p = 2**int(log(n, 2))
+		if p != n:
+		    n = p*2
+
+		while n/p < log(p, 2):
 		    p = p >> 1
 
 		print(p)
@@ -61,8 +65,8 @@ function main()
 {
 	# compilation
 	"$CC" "$SRC" --prefix "$MPI" -o "$OUT" || exitWith "unable to compile file $SRC"
-	count="$(compute_cpus "$(parse_input "$@" | wc -l)")"
 	check_input "$@"
+	count="$(compute_cpus "$(parse_input "$@" | wc -l)")"
 
 	parse_input "$@" | "$RUNNER" --prefix "$MPI" -np "$count" "$OUT"
 
