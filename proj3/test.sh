@@ -55,7 +55,7 @@ function compute_cpus()
 		    n = p*2
 
 		while n/p < log(p, 2):
-		    p = p >> 1
+		    p -= 1
 
 		print(p)
 	END
