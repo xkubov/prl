@@ -68,7 +68,7 @@ function main()
 	check_input "$@"
 	count="$(compute_cpus "$(parse_input "$@" | wc -l)")"
 
-	parse_input "$@" | "$RUNNER" --prefix "$MPI" -np "$count" "$OUT"
+	echo $(parse_input "$@") | xargs "$RUNNER" --prefix "$MPI" -np "$count" "$OUT"
 
 	# clean
 	rm -f $OUT

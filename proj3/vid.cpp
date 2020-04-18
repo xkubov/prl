@@ -14,7 +14,7 @@
 
 #define TAG 0
 
-#include <sys/time.h>
+#include <chrono>
 #define LOG_TIME true
 
 struct MPIShared {
@@ -38,52 +38,18 @@ long nextpow2(int num)
 	return i == num ? i : i << 1;
 }
 
-void readInput(MPIProcInfo &pi, std::vector<double> &vals)
-{
-	if (pi.pid != 0)
-		return;
-
-	uint64_t input;
-	while (std::cin >> input)
-		vals.push_back(input);
-
-	int angsize = nextpow2(vals.size());
-
-	for (int i = 0; i < pi.nproc; i++)
-		MPI_Send(&angsize, 1, MPI_INT, i, TAG, MPI_COMM_WORLD);
-}
-
-int recieveInputSize()
-{
-	int angsize = 0;
-	MPI_Status stat;
-	MPI_Recv(&angsize, 1, MPI_INT, 0, TAG, MPI_COMM_WORLD, &stat);
-
-	return angsize;
-}
-
-void computeAngles(MPIProcInfo &pi, MPIShared &angles)
+void computeAngles(MPIProcInfo &pi, MPIShared &angles, int argc, char** argv)
 {
 	int gap = 2;
-	double first;
+	double first = std::strtol(argv[0], nullptr, 10);
 
-	MPI_Win_fence(0, angles.win);
-
-	MPI_Get(&first, 1, MPI_DOUBLE, 0, 0, 1, MPI_DOUBLE, angles.win);
-
-	MPI_Win_fence(0, angles.win);
-	
-	int max = ceil(((double)angles.size)/(pi.nproc*gap));
+	int max = ceil(((double)argc)/(pi.nproc*gap));
 	for (int i = 0; i < max; i++) {
 		int idx = 2*pi.pid + i*pi.nproc*2;
 		for (int j = idx; j < idx + 2; j++) {
-			if (j < angles.size) // TODO: if power of 2 this can be deleted
-				MPI_Get(&angles.data[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, angles.win);
-
-			MPI_Win_fence(0, angles.win);
-
-			if (j < angles.size) { // TODO: if power of 2 this can be deleted
-				angles.data[j] = j == 0 ? -std::numeric_limits<double>::infinity(): std::atan((angles.data[j]-first)/j);
+			if (j < argc) {
+				auto elem = std::strtol(argv[j], nullptr, 10);
+				angles.data[j] = j == 0 ? -std::numeric_limits<double>::infinity(): std::atan((elem-first)/j);
 				MPI_Put(&angles.data[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, angles.win);
 			}
 		}
@@ -118,7 +84,6 @@ void upsweep(MPIProcInfo &pi, MPIShared &angles)
 
 void downsweep(MPIProcInfo &pi, MPIShared &angles)
 {
-	MPI_Win_fence(0, angles.win);
 	int gap, ngap;
 	for (int step = std::log2(angles.size); step > 0; step--) {
 		gap = 1 << step; ngap = gap >> 1;
@@ -153,14 +118,13 @@ int main(int argc, char** argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &pi.nproc);
 	MPI_Comm_rank(MPI_COMM_WORLD, &pi.pid);
 
+	argc--;
+	argv = &argv[1];
+
 	MPIShared angles = {}; // set nullptr to pointers
 
-	std::vector<double> angs;
-	readInput(pi, angs);
-
 	// For convenience is nsize rounded to nearest power of 2
-	int origsize = angs.size();
-	angles.size = recieveInputSize();
+	angles.size = nextpow2(argc);
 
 	MPI_Win_allocate(
 		angles.size*sizeof(double),
@@ -171,27 +135,25 @@ int main(int argc, char** argv)
 		&angles.win
 	);
 	
-	if (pi.pid == 0) {
-		angs.resize(angles.size, -std::numeric_limits<double>::infinity()); // fill rest with smallest number
-		std::memcpy(angles.data, angs.data(), sizeof(double)*angs.size());
-	}
+	std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
 
-	computeAngles(pi, angles);
-	std::memcpy(angs.data(), angles.data, sizeof(double)*angs.size());
+	computeAngles(pi, angles, argc, argv);
 
-	struct timeval t1, t2;
-	gettimeofday(&t1, 0);
 	upsweep(pi, angles);
 	// clear
 	angles.data[angles.size-1] = -std::numeric_limits<double>::infinity();
+	MPI_Win_fence(0, angles.win);
 
 	downsweep(pi, angles);
-	gettimeofday(&t2, 0);
+	std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
 
 	if (pi.pid == 0) {
+		double first = std::strtol(argv[0], nullptr, 10);
 		std::cout << "_";
-		for (int i = 1; i < origsize; i++) {
-			if (angles.data[i] < angs[i])
+		for (int i = 1; i < argc; i++) {
+			double elem = std::strtol(argv[i], nullptr, 10);
+			elem = std::atan((elem-first)/i);
+			if (angles.data[i] < elem)
 				std::cout << ",v";
 			else
 				std::cout << ",u";
@@ -199,8 +161,8 @@ int main(int argc, char** argv)
 		std::cout << std::endl;
 
 		if (LOG_TIME) {
-			double t = (1000000.0 * (t2.tv_sec - t1.tv_sec) + t2.tv_usec - t1.tv_usec);
-			std::cerr << t << std::endl;
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+			std::cerr << duration << std::endl;
 		}
 	}
 
