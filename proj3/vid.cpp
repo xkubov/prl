@@ -178,6 +178,7 @@ int main(int argc, char** argv)
 	}
 
 	computeAngles(pi, angles);
+	std::memcpy(angs.data(), angles.data, sizeof(double)*angs.size());
 
 //	if (pid == 0) {
 //		std::cout << "After angle compute:" << std::endl;
@@ -208,6 +209,7 @@ int main(int argc, char** argv)
 			else
 				std::cout << ",u";
 		}
+		std::cout << std::endl;
 	}
 
 	MPI_Win_free(&angles.win);
