@@ -91,8 +91,6 @@ void computeAngles(MPIProcInfo &pi, MPIShared &angles)
 
 void upsweep(MPIProcInfo &pi, MPIShared &angles)
 {
-	// TODO: remove... just for nice output
-	MPI_Win_fence(0, angles.win);
 	// gap -> each processor takes evey nth element of array.
 	// ngap -> gap in next level -> used to compute pid.
 	int gap = 1, ngap = 2;
@@ -117,9 +115,6 @@ void upsweep(MPIProcInfo &pi, MPIShared &angles)
 
 void downsweep(MPIProcInfo &pi, MPIShared &angles)
 {
-	// TODO: remove... just for nice output
-	MPI_Win_fence(0, angles.win);
-
 	int gap, ngap;
 	for (int step = std::log2(angles.size); step > 0; step--) {
 		gap = 1 << step; ngap = gap >> 1;
@@ -180,25 +175,10 @@ int main(int argc, char** argv)
 	computeAngles(pi, angles);
 	std::memcpy(angs.data(), angles.data, sizeof(double)*angs.size());
 
-//	if (pid == 0) {
-//		std::cout << "After angle compute:" << std::endl;
-//		for (int i = 0; i < angsize; i++) {
-//			std::cout << "\ti: " << i << " = " << angles[i] << std::endl;
-//		}
-//		std::cout << "====" << std::endl;
-//	}
-
 	upsweep(pi, angles);
 	// clear
 	angles.data[angles.size-1] = -std::numeric_limits<double>::infinity();
 
-//	if (pid == 0) {
-//		std::cout << "After upsweep:" << std::endl;
-//		for (int i = 0; i < angsize; i++) {
-//			std::cout << "\tm: " << i << " = " << angles[i] << std::endl;
-//		}
-//		std::cout << "upsweep = " << angles[angsize-1] << std::endl;
-//	}
 	downsweep(pi, angles);
 
 	if (pi.pid == 0) {
