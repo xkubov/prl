@@ -118,6 +118,7 @@ void upsweep(MPIProcInfo &pi, MPIShared &angles)
 
 void downsweep(MPIProcInfo &pi, MPIShared &angles)
 {
+	MPI_Win_fence(0, angles.win);
 	int gap, ngap;
 	for (int step = std::log2(angles.size); step > 0; step--) {
 		gap = 1 << step; ngap = gap >> 1;
