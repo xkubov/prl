@@ -14,6 +14,18 @@
 
 #define TAG 0
 
+struct MPIShared {
+	double *data;
+	double *original;
+	int size;
+	MPI_Win win;
+};
+
+struct MPIProcInfo {
+	int pid;
+	int nproc;
+};
+
 long nextpow2(int num)
 {
 	long i = 1;
@@ -23,15 +35,18 @@ long nextpow2(int num)
 	return i == num ? i : i << 1;
 }
 
-void readInput(std::vector<double> &vals, int nproc)
+void readInput(MPIProcInfo &pi, std::vector<double> &vals)
 {
+	if (pi.pid != 0)
+		return;
+
 	uint64_t input;
 	while (std::cin >> input)
 		vals.push_back(input);
 
 	int angsize = nextpow2(vals.size());
 
-	for (int i = 0; i < nproc; i++)
+	for (int i = 0; i < pi.nproc; i++)
 		MPI_Send(&angsize, 1, MPI_INT, i, TAG, MPI_COMM_WORLD);
 }
 
@@ -44,128 +59,125 @@ int recieveInputSize()
 	return angsize;
 }
 
-void computeAngles(int pid, int nproc, MPI_Win &win, double* angles, int n)
+void computeAngles(MPIProcInfo &pi, MPIShared &angles)
 {
 	int gap = 2;
 	double first;
 
-	MPI_Win_fence(0, win);
+	MPI_Win_fence(0, angles.win);
 
-	MPI_Get(&first, 1, MPI_DOUBLE, 0, 0, 1, MPI_DOUBLE, win);
+	MPI_Get(&first, 1, MPI_DOUBLE, 0, 0, 1, MPI_DOUBLE, angles.win);
 
-	MPI_Win_fence(0, win);
+	MPI_Win_fence(0, angles.win);
 	
-	int max = ceil(((double)n)/(nproc*gap));
+	int max = ceil(((double)angles.size)/(pi.nproc*gap));
 	for (int i = 0; i < max; i++) {
-		int idx = 2*pid + i*nproc*2;
+		int idx = 2*pi.pid + i*pi.nproc*2;
 		for (int j = idx; j < idx + 2; j++) {
-			if (j < n) // TODO: if power of 2 this can be deleted
-				MPI_Get(&angles[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, win);
+			if (j < angles.size) // TODO: if power of 2 this can be deleted
+				MPI_Get(&angles.data[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, angles.win);
 
-			MPI_Win_fence(0, win);
+			MPI_Win_fence(0, angles.win);
 
-			if (j < n) { // TODO: if power of 2 this can be deleted
-				angles[j] = j == 0 ? 0 : std::atan((angles[j]-first)/j);
-				MPI_Put(&angles[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, win);
+			if (j < angles.size) { // TODO: if power of 2 this can be deleted
+				angles.data[j] = j == 0 ? 0 : std::atan((angles.data[j]-first)/j);
+				MPI_Put(&angles.data[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, angles.win);
 			}
 		}
 	}
 
-	MPI_Win_fence(0, win);
+	MPI_Win_fence(0, angles.win);
 }
 
-void maxscan(int pid, int nproc, MPI_Win &win, double *angles, int n)
+void upsweep(MPIProcInfo &pi, MPIShared &angles)
 {
 	// TODO: remove... just for nice output
-	MPI_Win_fence(0, win);
+	MPI_Win_fence(0, angles.win);
 	// gap -> each processor takes evey nth element of array.
 	// ngap -> gap in next level -> used to compute pid.
 	int gap = 1, ngap = 2;
 
-	for (int step = 0; step < std::log2(n); step++) {
+	for (int step = 0; step < std::log2(angles.size); step++) {
 		int pgap = gap; gap = ngap; ngap <<= 1;
-		int max = ceil(((double)n)/(nproc*gap));
+		int max = ceil(((double)angles.size)/(pi.nproc*gap));
 		for (int i = 0; i < max; i++) {
-			int idx = gap*pid + i*nproc*gap + gap-1;
-			if (idx < n) {
-				double max = std::max(angles[idx], angles[idx-pgap]);
-				int tgPid = (idx/ngap)%nproc; // TODO: is modulo needed?
-				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, win);
+			int idx = gap*pi.pid + i*pi.nproc*gap + gap-1;
+			if (idx < angles.size) {
+				double max = std::max(angles.data[idx], angles.data[idx-pgap]);
+				int tgPid = (idx/ngap)%pi.nproc; // TODO: is modulo needed?
+				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, angles.win);
 				if (tgPid != 0)
-					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, win);
+					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, angles.win);
 			}
 		}
 
-		MPI_Win_fence(0, win);
+		MPI_Win_fence(0, angles.win);
 	}
 }
 
-void downsweep(int pid, int nproc, MPI_Win &win, double *angles, int n)
+void downsweep(MPIProcInfo &pi, MPIShared &angles)
 {
 	// TODO: remove... just for nice output
-	MPI_Win_fence(0, win);
+	MPI_Win_fence(0, angles.win);
 
 	int gap, ngap;
-	for (int step = std::log2(n); step > 0; step--) {
+	for (int step = std::log2(angles.size); step > 0; step--) {
 		gap = 1 << step; ngap = gap >> 1;
-		int max = ceil(((double)n)/(nproc*gap));
+		int max = ceil(((double)angles.size)/(pi.nproc*gap));
 		for (int i = 0; i < max; i++) {
-			int idx = gap*pid + i*nproc*gap + gap-1;
-			if (idx < n) {
-				double right = angles[idx];
-				double max = std::max(angles[idx], angles[idx-ngap]);
-				int tgPid = (idx/ngap)%nproc; // TODO: is modulo needed?
-				int tgPid2 = ((idx-ngap)/ngap)%nproc; // TODO: is modulo needed?
-				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, win);
-				MPI_Put(&right, 1, MPI_DOUBLE, tgPid2, idx-ngap, 1, MPI_DOUBLE, win);
+			int idx = gap*pi.pid + i*pi.nproc*gap + gap-1;
+			if (idx < angles.size) {
+				double right = angles.data[idx];
+				double max = std::max(angles.data[idx], angles.data[idx-ngap]);
+				int tgPid = (idx/ngap)%pi.nproc; // TODO: is modulo needed?
+				int tgPid2 = ((idx-ngap)/ngap)%pi.nproc; // TODO: is modulo needed?
+				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, angles.win);
+				MPI_Put(&right, 1, MPI_DOUBLE, tgPid2, idx-ngap, 1, MPI_DOUBLE, angles.win);
 				if (tgPid != 0)
-					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, win);
+					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, angles.win);
 
 				if (tgPid2 != 0)
-					MPI_Put(&right, 1, MPI_DOUBLE, 0, idx-ngap, 1, MPI_DOUBLE, win);
+					MPI_Put(&right, 1, MPI_DOUBLE, 0, idx-ngap, 1, MPI_DOUBLE, angles.win);
 			}
 		}
 
-		MPI_Win_fence(0, win);
+		MPI_Win_fence(0, angles.win);
 	}
 }
 
 int main(int argc, char** argv)
 {
-	int nproc;       // number of processors
-	int pid;         // id of computing processor
+	MPIProcInfo pi;
 
 	// Initialize MPI
 	MPI_Init(&argc, &argv);
-	MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-	MPI_Comm_rank(MPI_COMM_WORLD, &pid);
+	MPI_Comm_size(MPI_COMM_WORLD, &pi.nproc);
+	MPI_Comm_rank(MPI_COMM_WORLD, &pi.pid);
 
-	double* angles = nullptr;
-	MPI_Win win;
+	MPIShared angles;
 
 	std::vector<double> angs;
-	if (pid == 0)
-		readInput(angs, nproc);
+	readInput(pi, angs);
 
 	// For convenience is nsize rounded to nearest power of 2
 	int origsize = angs.size();
-	int angsize = recieveInputSize();
+	angles.size = recieveInputSize();
 
 	MPI_Win_allocate(
-		angsize*sizeof(double),
+		angles.size*sizeof(double),
 		sizeof(double),
 		MPI_INFO_NULL,
 		MPI_COMM_WORLD,
-		&angles,
-		&win
+		&angles.data,
+		&angles.win
 	);
 	
-	if (pid == 0) {
-		angs.resize(angsize, -std::numeric_limits<double>::infinity()); // fill rest with smallest number
-		std::memcpy(angles, angs.data(), sizeof(double)*angs.size());
+	if (pi.pid == 0) {
+		angs.resize(angles.size, -std::numeric_limits<double>::infinity()); // fill rest with smallest number
+		std::memcpy(angles.data, angs.data(), sizeof(double)*angs.size());
 	}
 
-	computeAngles(pid, nproc, win, angles, angsize);
+	computeAngles(pi, angles);
 
 //	if (pid == 0) {
 //		std::cout << "After angle compute:" << std::endl;
@@ -175,30 +187,30 @@ int main(int argc, char** argv)
 //		std::cout << "====" << std::endl;
 //	}
 
-	maxscan(pid, nproc, win, angles, angsize);
+	upsweep(pi, angles);
 	// clear
-	angles[angsize-1] = -std::numeric_limits<double>::infinity();
+	angles.data[angles.size-1] = -std::numeric_limits<double>::infinity();
 
 //	if (pid == 0) {
-//		std::cout << "After maxscan:" << std::endl;
+//		std::cout << "After upsweep:" << std::endl;
 //		for (int i = 0; i < angsize; i++) {
 //			std::cout << "\tm: " << i << " = " << angles[i] << std::endl;
 //		}
-//		std::cout << "maxscan = " << angles[angsize-1] << std::endl;
+//		std::cout << "upsweep = " << angles[angsize-1] << std::endl;
 //	}
-	downsweep(pid, nproc, win, angles, angsize);
+	downsweep(pi, angles);
 
-	if (pid == 0) {
+	if (pi.pid == 0) {
 		std::cout << "_";
 		for (int i = 1; i < origsize; i++) {
-			if (angles[i] <= angs[i])
+			if (angles.data[i] <= angs[i])
 				std::cout << ",v";
 			else
 				std::cout << ",u";
 		}
 	}
 
-	MPI_Win_free(&win);
+	MPI_Win_free(&angles.win);
 	MPI_Finalize(); 
 	
 	return 0;
