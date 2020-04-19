@@ -43,8 +43,8 @@ void computeAngles(MPIProcInfo &pi, MPIShared &angles, int argc, char** argv)
 	int gap = 2;
 	double first = std::strtol(argv[0], nullptr, 10);
 
-       // start epoch
-       MPI_Win_fence(0, angles.win);
+	// start epoch
+	MPI_Win_fence(0, angles.win);
 
 	int max = ceil(((double)argc)/(pi.nproc*gap));
 	for (int i = 0; i < max; i++) {
@@ -170,7 +170,7 @@ int main(int argc, char** argv)
 	}
 
 	MPI_Win_free(&angles.win);
-	MPI_Finalize(); 
-	
+	MPI_Finalize();
+
 	return 0;
 }
