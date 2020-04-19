@@ -43,6 +43,9 @@ void computeAngles(MPIProcInfo &pi, MPIShared &angles, int argc, char** argv)
 	int gap = 2;
 	double first = std::strtol(argv[0], nullptr, 10);
 
+       // start epoch
+       MPI_Win_fence(0, angles.win);
+
 	int max = ceil(((double)argc)/(pi.nproc*gap));
 	for (int i = 0; i < max; i++) {
 		int idx = 2*pi.pid + i*pi.nproc*2;
