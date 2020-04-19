@@ -86,14 +86,22 @@ void upsweep(MPIProcInfo &pi, MPIShared &angles)
 	int gap = 1, ngap = 2;
 
 	for (int step = 0; step < std::log2(angles.size); step++) {
+		// pgap -> space between computed elements.
 		int pgap = gap; gap = ngap; ngap <<= 1;
 		int max = ceil(((double)angles.size)/(pi.nproc*gap));
 		for (int i = 0; i < max; i++) {
+			// Compute index to array.
 			int idx = gap*pi.pid + i*pi.nproc*gap + gap-1;
+
+			// some of the processors will overflow -> make sure to sync them.
 			if (idx < angles.size) {
 				double max = std::max(angles.data[idx], angles.data[idx-pgap]);
-				int tgPid = (idx/ngap)%pi.nproc;
+				int tgPid = (idx/ngap)%pi.nproc; // modulo just for sure.
+
+				// Async send data to next processor.
 				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, angles.win);
+
+				// Async send data to master (if not already doing it).
 				if (tgPid != 0)
 					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, angles.win);
 			}
@@ -105,23 +113,34 @@ void upsweep(MPIProcInfo &pi, MPIShared &angles)
 
 void downsweep(MPIProcInfo &pi, MPIShared &angles)
 {
+	// gap -> each processor takes evey nth element of array.
+	// ngap -> gap in next level -> used to compute pid.
 	int gap, ngap;
 	for (int step = std::log2(angles.size); step > 0; step--) {
+		// ngap -> space between computed elements.
 		gap = 1 << step; ngap = gap >> 1;
 		int max = ceil(((double)angles.size)/(pi.nproc*gap));
 		for (int i = 0; i < max; i++) {
+			// Compute index to array.
 			int idx = gap*pi.pid + i*pi.nproc*gap + gap-1;
+
+			// some of the processors will overflow -> make sure to sync them.
 			if (idx < angles.size) {
+				// save value to send.
 				double right = angles.data[idx];
+				// compute max.
 				double max = std::max(angles.data[idx], angles.data[idx-ngap]);
-				int tgPid = (idx/ngap)%pi.nproc;
-				int tgPid2 = ((idx-ngap)/ngap)%pi.nproc;
+				int tgPid = (idx/ngap)%pi.nproc; // processor to receive maximum.
+				int tgPid2 = ((idx-ngap)/ngap)%pi.nproc; // processor to receive saved value.
+
+				// Send async.
 				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, angles.win);
 				MPI_Put(&right, 1, MPI_DOUBLE, tgPid2, idx-ngap, 1, MPI_DOUBLE, angles.win);
-				if (tgPid != 0)
+
+				if (tgPid != 0) // Also send to master.
 					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, angles.win);
 
-				if (tgPid2 != 0)
+				if (tgPid2 != 0) // Also send to master.
 					MPI_Put(&right, 1, MPI_DOUBLE, 0, idx-ngap, 1, MPI_DOUBLE, angles.win);
 			}
 		}
@@ -139,6 +158,7 @@ int main(int argc, char** argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &pi.nproc);
 	MPI_Comm_rank(MPI_COMM_WORLD, &pi.pid);
 
+	// Remove name of the program.
 	argc--;
 	argv = &argv[1];
 
@@ -156,6 +176,7 @@ int main(int argc, char** argv)
 		&angles.win
 	);
 	
+	// Start counting.
 	std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
 
 	computeAngles(pi, angles, argc, argv);
@@ -166,8 +187,11 @@ int main(int argc, char** argv)
 	MPI_Win_fence(0, angles.win);
 
 	downsweep(pi, angles);
+
+	// End of algorithm
 	std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
 
+	// Each processor provided master with results.
 	if (pi.pid == 0) {
 		double first = std::strtol(argv[0], nullptr, 10);
 		std::cout << "_";
@@ -187,6 +211,7 @@ int main(int argc, char** argv)
 		}
 	}
 
+	// Free alocated window.
 	MPI_Win_free(&angles.win);
 	MPI_Finalize();
 
