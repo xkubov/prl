@@ -15,20 +15,30 @@
 #define TAG 0
 
 #include <chrono>
-#define LOG_TIME true
+#define LOG_TIME false
 
+/**
+ * Helping structure for managing shared data.
+ */
 struct MPIShared {
+	// Pointer to local data of each processor.
 	double *data;
-	double *original;
+	// Size of shared data.
 	int size;
 	MPI_Win win;
 };
 
+/**
+ * Helping structure for MPI process info passing.
+ */
 struct MPIProcInfo {
 	int pid;
 	int nproc;
 };
 
+/**
+ * Computes the least large power of two for number on input.
+ */
 long nextpow2(int num)
 {
 	long i = 1; int j = num;
@@ -38,29 +48,37 @@ long nextpow2(int num)
 	return i == num ? i : i << 1;
 }
 
+/**
+ * Computes angles in paralell.
+ */
 void computeAngles(MPIProcInfo &pi, MPIShared &angles, int argc, char** argv)
 {
-	int gap = 2;
+	// Each processor will need first element for computation.
 	double first = std::strtol(argv[0], nullptr, 10);
 
 	// start epoch
 	MPI_Win_fence(0, angles.win);
 
-	int max = ceil(((double)argc)/(pi.nproc*gap));
+	int max = ceil(((double)argc)/(pi.nproc*2));
 	for (int i = 0; i < max; i++) {
 		int idx = 2*pi.pid + i*pi.nproc*2;
 		for (int j = idx; j < idx + 2; j++) {
 			if (j < argc) {
 				auto elem = std::strtol(argv[j], nullptr, 10);
 				angles.data[j] = j == 0 ? -std::numeric_limits<double>::infinity(): std::atan((elem-first)/j);
+				// Async save data to master.
 				MPI_Put(&angles.data[j], 1, MPI_DOUBLE, 0, j, 1, MPI_DOUBLE, angles.win);
 			}
 		}
 	}
 
+	// Sync all processors.
 	MPI_Win_fence(0, angles.win);
 }
 
+/**
+ * First part of the algorithm.
+ */
 void upsweep(MPIProcInfo &pi, MPIShared &angles)
 {
 	// gap -> each processor takes evey nth element of array.
@@ -74,7 +92,7 @@ void upsweep(MPIProcInfo &pi, MPIShared &angles)
 			int idx = gap*pi.pid + i*pi.nproc*gap + gap-1;
 			if (idx < angles.size) {
 				double max = std::max(angles.data[idx], angles.data[idx-pgap]);
-				int tgPid = (idx/ngap)%pi.nproc; // TODO: is modulo needed?
+				int tgPid = (idx/ngap)%pi.nproc;
 				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, angles.win);
 				if (tgPid != 0)
 					MPI_Put(&max, 1, MPI_DOUBLE, 0, idx, 1, MPI_DOUBLE, angles.win);
@@ -96,8 +114,8 @@ void downsweep(MPIProcInfo &pi, MPIShared &angles)
 			if (idx < angles.size) {
 				double right = angles.data[idx];
 				double max = std::max(angles.data[idx], angles.data[idx-ngap]);
-				int tgPid = (idx/ngap)%pi.nproc; // TODO: is modulo needed?
-				int tgPid2 = ((idx-ngap)/ngap)%pi.nproc; // TODO: is modulo needed?
+				int tgPid = (idx/ngap)%pi.nproc;
+				int tgPid2 = ((idx-ngap)/ngap)%pi.nproc;
 				MPI_Put(&max, 1, MPI_DOUBLE, tgPid, idx, 1, MPI_DOUBLE, angles.win);
 				MPI_Put(&right, 1, MPI_DOUBLE, tgPid2, idx-ngap, 1, MPI_DOUBLE, angles.win);
 				if (tgPid != 0)
