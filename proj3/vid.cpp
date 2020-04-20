@@ -12,8 +12,6 @@
 
 #include <mpi.h>
 
-#define TAG 0
-
 #include <chrono>
 #define LOG_TIME false
 
